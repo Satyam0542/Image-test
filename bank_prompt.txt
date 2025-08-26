@@ -1,0 +1,99 @@
+        """
+        Create a strict JSON extraction prompt for bank statements.
+        - Page 1: includes metadata + transactions.
+        - Other pages: transactions only.
+        """
+
+        base_transaction_schema = """
+    {
+    "transactions": [
+        {
+        "transaction_id": "string",
+        "transaction_date": "YYYY-MM-DD or original format",
+        "transaction_description": "string (full description of this row, do not truncate)",
+        "transaction_amount": "string",
+        "transaction_type": "debit | credit | null",
+        "balance": "string or null",
+        "channel": "string or null"
+        }
+    ]
+    }
+    """
+
+        if include_metadata:
+            return f"""
+    You are analyzing a bank statement page.
+
+    ⚠️ RULES:
+    1. Extract **all relevant metadata fields** (bank name, branch name & address, account holder name, account holder address, 
+    account number, currency, IBAN, IFSC, SWIFT, sort code, statement period, statement date, statement type, 
+    opening balance, closing balance, BRN, overdraft limit, etc.).
+    2. For **every metadata field**, you MUST return:
+    - "field_name": the label in snake_case.
+    - "field_value": the extracted value, or null if missing.
+    - "confidence_score": REQUIRED. A float between 0.0 and 1.0. Never omit it.
+    3. Confidence scoring guidelines:
+    - 1.0 → exact match, clearly visible.
+    - 0.8 → inferred with high certainty.
+    - 0.5 → partially visible / ambiguous.
+    - 0.0 → not found.
+    4. If any `metadata_field` does not have a `confidence_score`, the output is INVALID.
+    5. Do NOT include irrelevant fields (page numbers, disclaimers, watermarks).
+    6. Transactions:
+    - Extract each row individually (do not merge).
+    - Always capture the correct transaction_date per row.
+    - If a cell is blank, set it to null.
+    - If debit/credit type is unclear, set it to null.
+    - Only actual financial transactions must be included.
+    7. Return STRICT JSON ONLY (no comments, no extra text, no trailing commas).
+    
+    ✅ Example of valid metadata output:
+    {{
+    "metadata_fields": [
+        {{
+        "field_name": "bank_name",
+        "field_value": "abc bank",
+        "confidence_score": "0.95",
+        }}
+    ],
+    "transactions": []
+    }}
+
+    Schema (MANDATORY):
+    {{
+    "metadata_fields": [
+        {{
+        "field_name": "string",
+        "field_value": "string or null",
+        "confidence_score": "float between 0.0 and 1.0",
+        }}
+    ],
+    "transactions": [
+        {{
+        "transaction_id": "string",
+        "transaction_date": "YYYY-MM-DD or original format",
+        "transaction_description": "string (full description of this row, do not truncate)",
+        "transaction_amount": "string",
+        "transaction_type": "debit | credit | null",
+        "balance": "string or null",
+        "channel": "string or null"
+        }}
+    ]
+    }}
+    """
+        else:
+            return f"""
+    You are analyzing a bank statement page that contains ONLY transactions.
+
+    ⚠️ RULES:
+    - Extract each transaction row individually, never merge rows.
+    - Always capture the correct date for each row (do not reuse).
+    - If both transaction date and value date exist, use "transaction_date" for posting date, add "value_date" only if present.
+    - If a cell is blank, set it to null.
+    - Transactions must represent actual financial rows only.
+    - If debit/credit type is unclear, set it to null.
+    - Always return STRICT JSON ONLY (no comments, no extra text, no trailing commas).
+
+    Schema:
+    {base_transaction_schema}
+    """
